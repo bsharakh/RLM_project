@@ -109,9 +109,8 @@ LOG_LEVEL=INFO
 This is designed as a foundation. Next steps:
 1. ✅ Add test question system
 2. ✅ Implement detailed logging
-3. 🔄 Add vector database support
-4. 🔄 Implement caching layer
-5. 🔄 Add metrics and evaluation
+3. ✅ Add metrics and evaluation
+4. ?
 
 ## License
 
