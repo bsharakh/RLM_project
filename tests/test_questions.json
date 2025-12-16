@@ -1,0 +1,52 @@
+{
+  "test_sets": [
+    {
+      "name": "Simple Facts",
+      "description": "Basic factual questions with straightforward answers",
+      "questions": [
+        {
+          "id": "sf_01",
+          "question": "Who founded the company?",
+          "context": "TechCorp was founded in 2010 by Jane Smith and Robert Chen in San Francisco. The company started as a small startup focusing on mobile applications. In 2015, they received their first major funding round of $5 million from Sequoia Capital. Today, TechCorp employs over 500 people and has offices in 10 countries.",
+          "expected_answer": "Jane Smith and Robert Chen"
+        },
+        {
+          "id": "sf_02",
+          "question": "What year did they receive funding?",
+          "context": "TechCorp was founded in 2010 by Jane Smith and Robert Chen in San Francisco. The company started as a small startup focusing on mobile applications. In 2015, they received their first major funding round of $5 million from Sequoia Capital. Today, TechCorp employs over 500 people and has offices in 10 countries.",
+          "expected_answer": "2015"
+        }
+      ]
+    },
+    {
+      "name": "Multi-Step Reasoning",
+      "description": "Questions requiring multiple pieces of information to answer",
+      "questions": [
+        {
+          "id": "msr_01",
+          "question": "How much revenue growth did they have between Q1 and Q3?",
+          "context": "Q1 2024 Results: Revenue of $2.3M, Expenses of $1.8M, Net Profit $500K. Q2 2024 Results: Revenue of $2.8M, Expenses of $2.1M, Net Profit $700K. Q3 2024 Results: Revenue of $3.5M, Expenses of $2.4M, Net Profit $1.1M. The company expects Q4 to continue this growth trajectory.",
+          "expected_answer": "$1.2M increase (from $2.3M to $3.5M)"
+        },
+        {
+          "id": "msr_02",
+          "question": "What was the average net profit across all quarters mentioned?",
+          "context": "Q1 2024 Results: Revenue of $2.3M, Expenses of $1.8M, Net Profit $500K. Q2 2024 Results: Revenue of $2.8M, Expenses of $2.1M, Net Profit $700K. Q3 2024 Results: Revenue of $3.5M, Expenses of $2.4M, Net Profit $1.1M. The company expects Q4 to continue this growth trajectory.",
+          "expected_answer": "$766.67K (average of $500K, $700K, and $1.1M)"
+        }
+      ]
+    },
+    {
+      "name": "Contextual Analysis",
+      "description": "Questions requiring understanding of relationships and context",
+      "questions": [
+        {
+          "id": "ca_01",
+          "question": "What was the main reason for the product delay?",
+          "context": "In March 2024, the engineering team discovered a critical security vulnerability in the authentication system. This required a complete redesign of the login flow. Additionally, the QA team identified performance issues when handling more than 1000 concurrent users. The combination of these factors led to the decision to delay the product launch from April to July 2024. The CEO stated that 'security and reliability are our top priorities, and we won't compromise on either.'",
+          "expected_answer": "A critical security vulnerability in the authentication system and performance issues with concurrent users"
+        }
+      ]
+    }
+  ]
+}
