@@ -54,9 +54,20 @@ class RLMLogger:
             print(f"{Fore.YELLOW}{'='*80}")
             print(f"{Fore.CYAN}Question:{Style.RESET_ALL} {log_entry['question']}")
             print(f"{Fore.GREEN}Answer:{Style.RESET_ALL} {log_entry['answer']}")
+        elif q_type == "RLM_TO_REPL":
+            print(f"\n{Fore.YELLOW}{'='*80}")
+            print(f"{Fore.YELLOW}[ITERATION {iteration}] BOSS → REPL{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}{'='*80}")
+            print(f"{Fore.CYAN}Code:{Style.RESET_ALL}")
+            print(f"{log_entry['question']}")
+            if log_entry.get('answer'):
+                print(f"\n{Fore.GREEN}Output:{Style.RESET_ALL}")
+                print(f"{log_entry['answer']}")
+            if log_entry.get('metadata', {}).get('error'):
+                print(f"\n{Fore.RED}Error: {log_entry['metadata']['error']}{Style.RESET_ALL}")
         elif q_type == "INTERMEDIATE_ANSWER":
             print(f"\n{Fore.BLUE}{'─'*80}")
-            print(f"{Fore.BLUE}[INTERMEDIATE] What we know so far:{Style.RESET_ALL}")
+            print(f"{Fore.BLUE}[INTERMEDIATE] {log_entry.get('question', 'What we know so far')}:{Style.RESET_ALL}")
             print(f"{Fore.WHITE}{log_entry['answer']}{Style.RESET_ALL}")
             
             # Display metrics if available
@@ -86,7 +97,7 @@ class RLMLogger:
                 print(f"  {'─'*30}")
                 print(f"  Overall:      {color}{overall:.2f}{Style.RESET_ALL} ({status})")
             
-            print(f"{Fore.BLUE}{'─'*80}")
+            print(f"{Fore.BLUE}{'─'*80}{Style.RESET_ALL}")
         elif q_type == "FINAL_ANSWER":
             print(f"\n{Fore.MAGENTA}{'='*80}")
             print(f"{Fore.MAGENTA}[FINAL ANSWER]{Style.RESET_ALL}")
@@ -153,6 +164,42 @@ class RLMLogger:
         
         if Config.ENABLE_LOGGING and Config.LOG_TO_CONSOLE:
             print(f"{Fore.RED}[ERROR] {error_msg}{Style.RESET_ALL}")
+        
+        if Config.ENABLE_LOGGING and Config.LOG_TO_FILE:
+            self._save_to_file()
+    
+    def log_info(self, info_msg):
+        """Log an info message."""
+        log_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "type": "INFO",
+            "message": info_msg
+        }
+        self.logs.append(log_entry)
+        
+        if Config.ENABLE_LOGGING and Config.LOG_TO_CONSOLE:
+            print(f"{Fore.CYAN}[INFO] {info_msg}{Style.RESET_ALL}")
+        
+        if Config.ENABLE_LOGGING and Config.LOG_TO_FILE:
+            self._save_to_file()
+    
+    def log_final_answer(self, answer, metadata=None):
+        """Log the final answer."""
+        log_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "type": "FINAL_ANSWER",
+            "answer": answer,
+            "metadata": metadata or {}
+        }
+        self.logs.append(log_entry)
+        
+        if Config.ENABLE_LOGGING and Config.LOG_TO_CONSOLE:
+            print(f"\n{Fore.GREEN}{'='*80}")
+            print(f"{Fore.GREEN}FINAL ANSWER:")
+            print(f"{Fore.GREEN}{'='*80}{Style.RESET_ALL}")
+            print(f"{answer}")
+            if metadata:
+                print(f"\n{Fore.YELLOW}Metadata: {metadata}{Style.RESET_ALL}")
         
         if Config.ENABLE_LOGGING and Config.LOG_TO_FILE:
             self._save_to_file()

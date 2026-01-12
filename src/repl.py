@@ -1,204 +1,130 @@
-#!/usr/bin/env python3
-"""Interactive REPL for RLM system."""
+"""REPL Environment for RLM - Allows boss to execute Python code."""
 import sys
-from pathlib import Path
-
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from src.rlm import RLM
-from src.config import Config
-from colorama import Fore, Style, init
-
-# Initialize colorama
-init(autoreset=True)
+from io import StringIO
+from typing import Dict, Any, Callable
 
 
-class RLMRepl:
-    """Interactive REPL for RLM system."""
+class REPLEnvironment:
+    """
+    Python REPL environment where the boss LM can execute code.
+    Context is stored as a variable, not passed in prompts.
+    """
     
     def __init__(self):
-        """Initialize REPL."""
-        self.rlm = None
-        self.context = ""
-        self.running = True
+        """Initialize the REPL environment."""
+        self.namespace = {}
+        self.output_buffer = []
         
-    def start(self):
-        """Start the REPL."""
-        self.print_welcome()
-        
-        # Initialize RLM
-        try:
-            self.rlm = RLM()
-            config = self.rlm.get_config_info()
-            print(f"{Fore.GREEN}✓ RLM initialized")
-            print(f"  Boss Model: {config['rlm_model']}")
-            print(f"  Intern Model: {config['sublm_model']}")
-            print(f"  Max Iterations: {config['max_iterations']}")
-            print(f"  Max Depth: {config['max_depth']}\n")
-        except Exception as e:
-            print(f"{Fore.RED}✗ Error initializing RLM: {e}")
-            print(f"{Fore.YELLOW}Make sure you've set up your .env file with OPENAI_API_KEY")
-            return
-        
-        # Main REPL loop
-        while self.running:
-            try:
-                user_input = input(f"{Fore.CYAN}> {Style.RESET_ALL}").strip()
-                
-                if not user_input:
-                    continue
-                
-                self.handle_command(user_input)
-                
-            except KeyboardInterrupt:
-                print(f"\n{Fore.YELLOW}Use 'exit' or 'quit' to leave the REPL")
-            except EOFError:
-                break
-        
-        print(f"\n{Fore.BLUE}Goodbye!")
+    def add_function(self, name: str, func: Callable):
+        """Add a function to the REPL namespace."""
+        self.namespace[name] = func
     
-    def handle_command(self, user_input):
-        """Handle user commands."""
-        # Check for special commands
-        if user_input.lower() in ['exit', 'quit', 'q']:
-            self.running = False
-            return
-        
-        if user_input.lower() in ['help', 'h', '?']:
-            self.print_help()
-            return
-        
-        if user_input.lower() == 'clear':
-            self.context = ""
-            print(f"{Fore.GREEN}✓ Context cleared")
-            return
-        
-        if user_input.lower() == 'show':
-            self.show_context()
-            return
-        
-        if user_input.lower() == 'config':
-            self.show_config()
-            return
-        
-        # Check for context assignment
-        if user_input.startswith('context =') or user_input.startswith('context='):
-            self.set_context(user_input)
-            return
-        
-        # Check for question
-        if user_input.startswith('ask(') or user_input.startswith('ask ('):
-            self.ask_question(user_input)
-            return
-        
-        # Default: treat as setting context
-        print(f"{Fore.YELLOW}Tip: Use 'context = \"your text\"' to set context or 'ask(\"question\")' to ask")
+    def add_variable(self, name: str, value: Any):
+        """Add a variable to the REPL namespace."""
+        self.namespace[name] = value
     
-    def set_context(self, user_input):
-        """Set the context variable."""
-        try:
-            # Extract the value after '='
-            value = user_input.split('=', 1)[1].strip()
-            
-            # Remove quotes if present
-            if (value.startswith('"') and value.endswith('"')) or \
-               (value.startswith("'") and value.endswith("'")):
-                value = value[1:-1]
-            
-            self.context = value
-            print(f"{Fore.GREEN}✓ Context set ({len(self.context)} characters)")
-            
-        except Exception as e:
-            print(f"{Fore.RED}✗ Error setting context: {e}")
-    
-    def ask_question(self, user_input):
-        """Ask a question using the RLM."""
-        if not self.context:
-            print(f"{Fore.RED}✗ No context set. Use 'context = \"your text\"' first")
-            return
+    def execute(self, code: str) -> Dict[str, Any]:
+        """Execute Python code in the REPL environment."""
+        old_stdout = sys.stdout
+        sys.stdout = StringIO()
+        
+        result = {
+            "success": True,
+            "output": "",
+            "error": None,
+            "variables_added": []
+        }
         
         try:
-            # Extract question from ask("question")
-            question = user_input.split('ask', 1)[1].strip()
-            question = question.strip('()')
+            vars_before = set(self.namespace.keys())
+            exec(code, self.namespace)
+            vars_after = set(self.namespace.keys())
+            result["variables_added"] = list(vars_after - vars_before)
             
-            # Remove quotes if present
-            if (question.startswith('"') and question.endswith('"')) or \
-               (question.startswith("'") and question.endswith("'")):
-                question = question[1:-1]
-            
-            if not question:
-                print(f"{Fore.RED}✗ Please provide a question")
-                return
-            
-            # Ask the RLM
-            print(f"\n{Fore.BLUE}Processing question...{Style.RESET_ALL}\n")
-            answer = self.rlm.answer(question, self.context)
-            
-            print(f"\n{Fore.GREEN}{'='*80}")
-            print(f"FINAL ANSWER")
-            print(f"{'='*80}{Style.RESET_ALL}")
-            print(answer)
-            print()
+            output = sys.stdout.getvalue()
+            if output:
+                result["output"] = output
+                self.output_buffer.append(output)
             
         except Exception as e:
-            print(f"{Fore.RED}✗ Error: {e}")
-    
-    def show_context(self):
-        """Show current context."""
-        if not self.context:
-            print(f"{Fore.YELLOW}No context set")
-            return
+            result["success"] = False
+            result["error"] = str(e)
+            result["output"] = sys.stdout.getvalue()
+            
+        finally:
+            sys.stdout = old_stdout
         
-        print(f"\n{Fore.CYAN}Current Context:{Style.RESET_ALL}")
-        print(f"{Fore.WHITE}{'='*80}")
-        preview = self.context[:500] + "..." if len(self.context) > 500 else self.context
-        print(preview)
-        print(f"{'='*80}")
-        print(f"Total length: {len(self.context)} characters\n")
+        return result
     
-    def show_config(self):
-        """Show current configuration."""
-        config = self.rlm.get_config_info()
-        print(f"\n{Fore.CYAN}Current Configuration:{Style.RESET_ALL}")
-        print(f"  Boss Model: {config['rlm_model']}")
-        print(f"  Intern Model: {config['sublm_model']}")
-        print(f"  Max Iterations: {config['max_iterations']}")
-        print(f"  Max Depth: {config['max_depth']}")
-        print(f"  Logging: {'Enabled' if Config.ENABLE_LOGGING else 'Disabled'}")
-        print()
+    def get_variable(self, name: str) -> Any:
+        """Get a variable from the namespace."""
+        return self.namespace.get(name)
     
-    def print_welcome(self):
-        """Print welcome message."""
-        print(f"\n{Fore.BLUE}{'='*80}")
-        print(f"{Fore.BLUE}RLM (Recursive Language Model) REPL")
-        print(f"{Fore.BLUE}{'='*80}{Style.RESET_ALL}\n")
-        print("Welcome to the RLM interactive environment!")
-        print(f"Type {Fore.CYAN}'help'{Style.RESET_ALL} for available commands\n")
+    def get_output_history(self) -> list:
+        """Get all output from executed code."""
+        return self.output_buffer.copy()
     
-    def print_help(self):
-        """Print help message."""
-        print(f"\n{Fore.CYAN}Available Commands:{Style.RESET_ALL}")
-        print(f"  {Fore.YELLOW}context = \"text\"{Style.RESET_ALL}  - Set the context/knowledge base")
-        print(f"  {Fore.YELLOW}ask(\"question\"){Style.RESET_ALL}   - Ask a question about the context")
-        print(f"  {Fore.YELLOW}show{Style.RESET_ALL}              - Show current context")
-        print(f"  {Fore.YELLOW}clear{Style.RESET_ALL}             - Clear the context")
-        print(f"  {Fore.YELLOW}config{Style.RESET_ALL}            - Show current configuration")
-        print(f"  {Fore.YELLOW}help{Style.RESET_ALL}              - Show this help message")
-        print(f"  {Fore.YELLOW}exit{Style.RESET_ALL}              - Exit the REPL\n")
+    def clear(self):
+        """Clear the REPL environment."""
+        self.namespace = {}
+        self.output_buffer = []
+
+
+class SafeREPLEnvironment(REPLEnvironment):
+    """
+    Safer REPL environment with restricted operations.
+    Blocks dangerous operations like file I/O, network, etc.
+    """
+    
+    BLOCKED_IMPORTS = {
+        'os', 'sys', 'subprocess', 'socket', 'urllib',
+        'requests', 'http', 'ftplib', 'smtplib',
+        'pickle', 'shelve', 'marshal'
+    }
+    
+    BLOCKED_BUILTINS = {
+        'open', 'eval', 'exec', 'compile',
+        '__import__', 'globals', 'locals', 'vars'
+    }
+    
+    def __init__(self):
+        """Initialize safe REPL with restricted builtins."""
+        super().__init__()
         
-        print(f"{Fore.CYAN}Example Usage:{Style.RESET_ALL}")
-        print(f'  > context = "Python is a programming language created by Guido van Rossum."')
-        print(f'  > ask("Who created Python?")')
-        print()
-
-
-def main():
-    """Main entry point."""
-    repl = RLMRepl()
-    repl.start()
-
-
-if __name__ == "__main__":
-    main()
+        # Create safe builtins
+        safe_builtins = {
+            'len': len, 'str': str, 'int': int, 'float': float,
+            'list': list, 'dict': dict, 'set': set, 'tuple': tuple,
+            'range': range, 'enumerate': enumerate, 'zip': zip,
+            'map': map, 'filter': filter, 'sum': sum,
+            'min': min, 'max': max, 'sorted': sorted, 'print': print,
+            'any': any, 'all': all,  # CRITICAL: Needed for list comprehensions!
+            'isinstance': isinstance, 'type': type,  # Useful for type checking
+            'abs': abs, 'round': round,  # Math functions
+        }
+        
+        self.namespace['__builtins__'] = safe_builtins
+    
+    def execute(self, code: str) -> Dict[str, Any]:
+        """Execute code with safety checks."""
+        # Check for blocked imports
+        for blocked in self.BLOCKED_IMPORTS:
+            if f'import {blocked}' in code or f'from {blocked}' in code:
+                return {
+                    "success": False,
+                    "output": "",
+                    "error": f"Import of '{blocked}' is not allowed",
+                    "variables_added": []
+                }
+        
+        # Check for blocked operations
+        for blocked in self.BLOCKED_BUILTINS:
+            if blocked in code:
+                return {
+                    "success": False,
+                    "output": "",
+                    "error": f"Use of '{blocked}' is not allowed",
+                    "variables_added": []
+                }
+        
+        return super().execute(code)

@@ -17,7 +17,24 @@ Guidelines:
 - Be strategic - think about what information you need and ask for it efficiently
 - The intern can only read the context, so direct your questions toward extracting relevant information from it
 
-Your goal: Get the best possible answer by strategically querying your intern.
+CRITICAL FOR RANKING/COMPARISON QUESTIONS:
+When the question involves rankings (largest, smallest, second-largest, etc.) or comparisons:
+1. **Always list out ALL the numbers explicitly** before making your conclusion
+2. **Compare the numbers step-by-step** - don't rush to judgment
+3. **Double-check your math and logic** - "second-largest" means the one with the second-highest number
+4. **Pay attention to context qualifiers**:
+   - "second-largest globally" might mean there's a larger one NOT in the current data
+   - "largest in this dataset" means largest among the numbers you have
+   - When in doubt, rank based on the actual numbers you can see
+5. Example workflow:
+   - Get all relevant numbers from intern
+   - Write them out: "A=100, B=200, C=150"
+   - Sort them by NUMBER SIZE: "B=200 (largest in data), C=150 (second-largest in data), A=100 (third in data)"
+   - Check: Does the context say something different? (e.g., "C is described as 'second-largest globally'")
+   - If context contradicts the numbers, explain the discrepancy in your answer
+   - Then conclude: "Based on the numbers: C with 150 is second-largest in this data"
+
+Your goal: Get the best possible answer by strategically querying your intern and carefully reasoning through the data.
 """
 
 SUBLM_SYSTEM_PROMPT = """You are the Sub Language Model (SubLLM) - the "intern" in a recursive question-answering system.

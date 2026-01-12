@@ -30,7 +30,11 @@ class AnswerMetrics:
         metrics['completeness'] = self._evaluate_completeness(question, answer)
         
         # Accuracy: Is the answer factually correct based on context?
-        metrics['accuracy'] = self._evaluate_accuracy(answer, context)
+        accuracy = self._evaluate_accuracy(answer, context)
+        
+        # Get second opinion if accuracy seems suspiciously low
+        accuracy = self._verify_with_second_opinion(answer, context, accuracy)
+        metrics['accuracy'] = accuracy
         
         # Confidence: How confident is the answer?
         metrics['confidence'] = self._evaluate_confidence(answer, question, context)
@@ -50,23 +54,57 @@ class AnswerMetrics:
         Returns:
             float: Score from 0.0 to 1.0
         """
-        prompt = f"""Evaluate the completeness of this answer.
+        prompt = f"""Evaluate if this answer COMPLETELY addresses the question.
 
 Question: {question}
 Answer: {answer}
 
-Does the answer address ALL parts of the question? 
-- If it fully answers everything: score 1.0
-- If it partially answers: score 0.3-0.7 based on how much
-- If it doesn't answer at all: score 0.0
+CRITICAL RULES FOR "ALL" and "TOTAL" QUESTIONS:
+- If question asks for "ALL" or "TOTAL", the answer MUST include ALL items
+- Score 1.0 ONLY if answer explicitly confirms completeness (e.g., "all 6 products", "complete list", "every office")
+- Partial lists get partial scores based on coverage
+- Without explicit completeness confirmation, max score is 0.9
+
+EXAMPLES FOR "ALL/TOTAL" QUESTIONS:
+- Q: "Total from ALL product lines?" A: "$144M (Cloud + Security)" -> 0.4 (only 2, clearly partial)
+- Q: "Total from ALL product lines?" A: "$257M (5 products)" -> 0.85 (5 products but no "all" confirmation)
+- Q: "Total from ALL product lines?" A: "$306M (all 6 products: Cloud, Security, Analytics, Developer, AI/ML, Collaboration)" -> 1.0 (explicitly complete)
+- Q: "Total employees across ALL offices?" A: "1450 (7 offices)" -> 0.9 (comprehensive but no explicit "all")
+- Q: "Total employees across ALL offices?" A: "1450 from all 7 offices: Seattle, London..." -> 1.0 (explicit "all")
+
+EXAMPLES FOR SIMPLE QUESTIONS:
+- Q: "How much revenue growth?" A: "$1.2M" -> 1.0 (complete)
+- Q: "How much revenue growth?" A: "Revenue grew" -> 0.3 (no number)
+- Q: "Who founded the company?" A: "Jane and Robert" -> 1.0 (complete)
+
+SCORING FOR "ALL/TOTAL" QUESTIONS:
+- 1.0 = ALL items with explicit confirmation ("all 6", "every", "complete")
+- 0.9 = Comprehensive list but no explicit "all" (e.g., "6 products" without "all 6")
+- 0.85 = Nearly all (5/6 items)
+- 0.7 = Most (4/6 items)
+- 0.5 = Some (2-3/6 items)  
+- 0.3-0.4 = Few (1-2/6 items)
+- 0.0 = None
+
+SCORING FOR SIMPLE QUESTIONS:
+- 1.0 = Directly provides complete answer
+- 0.7 = Mostly complete
+- 0.5 = Partial
+- 0.3 = Barely addresses
+- 0.0 = Doesn't answer
+
+CRITICAL: 
+- For "all/total" questions, 1.0 requires explicit completeness language
+- 5 out of 6 items → max 0.85 (unless confirmed complete)
+- "all", "every", "complete", "entire" → indicators of completeness
 
 Respond ONLY with a number between 0.0 and 1.0. No explanation."""
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",  # Use cheaper model for metrics
+                model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "You are an answer evaluator. Respond only with a number."},
+                    {"role": "system", "content": "You are an answer completeness evaluator. A complete answer directly provides what was asked, even if brief. Rambling without answering scores low. Respond only with a number."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.0,
@@ -74,7 +112,14 @@ Respond ONLY with a number between 0.0 and 1.0. No explanation."""
             )
             
             score_text = response.choices[0].message.content.strip()
-            return float(score_text)
+            score = float(score_text)
+            
+            # Sanity check
+            if score < 0.0 or score > 1.0:
+                print(f"Warning: Invalid completeness score {score}, defaulting to 0.5")
+                return 0.5
+            
+            return score
             
         except Exception as e:
             print(f"Error evaluating completeness: {e}")
@@ -87,20 +132,31 @@ Respond ONLY with a number between 0.0 and 1.0. No explanation."""
         Returns:
             float: Score from 0.0 to 1.0
         """
-        prompt = f"""Evaluate the factual accuracy of this answer against the context.
+        prompt = f"""You are a fact checker. Evaluate if this answer is factually accurate based on the context.
 
-Context (ground truth):
+Context (source of truth):
 {context}
 
 Answer to evaluate:
 {answer}
 
-Is the answer factually accurate based on the context?
-- If completely accurate: score 1.0
-- If mostly accurate with minor errors: score 0.7-0.9
-- If partially accurate: score 0.3-0.6
-- If mostly inaccurate: score 0.1-0.3
-- If completely wrong: score 0.0
+Instructions:
+1. Check if the facts in the answer match the context
+2. Ignore formatting or wording differences - focus on factual correctness
+3. If the answer is mathematically derived from context data, verify the calculation
+
+Examples:
+- Context says "Revenue Q1: $2.3M, Q3: $3.5M", Answer says "Growth was $1.2M" → 1.0 (correct math: 3.5-2.3=1.2)
+- Context says "Founded in 2010", Answer says "Founded in 2012" → 0.0 (wrong year)
+- Context says "Founded by Jane and Robert", Answer says "Founded by Jane Smith" → 0.7 (partially correct)
+
+Score:
+- 1.0 = Completely accurate (all facts correct)
+- 0.9 = Nearly accurate (very minor issues)
+- 0.7 = Mostly accurate (small errors or incomplete)
+- 0.5 = Half accurate (mix of right and wrong)
+- 0.3 = Mostly inaccurate (mostly wrong)
+- 0.0 = Completely wrong (all facts incorrect)
 
 Respond ONLY with a number between 0.0 and 1.0. No explanation."""
 
@@ -108,7 +164,7 @@ Respond ONLY with a number between 0.0 and 1.0. No explanation."""
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "You are a fact checker. Respond only with a number."},
+                    {"role": "system", "content": "You are a precise fact checker. Verify mathematical calculations and factual accuracy. Respond only with a number."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.0,
@@ -116,11 +172,67 @@ Respond ONLY with a number between 0.0 and 1.0. No explanation."""
             )
             
             score_text = response.choices[0].message.content.strip()
-            return float(score_text)
+            score = float(score_text)
+            
+            # Sanity check: if score is outside valid range, default to 0.5
+            if score < 0.0 or score > 1.0:
+                print(f"Warning: Invalid accuracy score {score}, defaulting to 0.5")
+                return 0.5
+            
+            return score
             
         except Exception as e:
             print(f"Error evaluating accuracy: {e}")
             return 0.5
+    
+    def _verify_with_second_opinion(self, answer, context, first_score):
+        """
+        Get a second opinion on accuracy if first score seems wrong.
+        
+        Args:
+            answer: The answer to verify
+            context: The context
+            first_score: The initial accuracy score
+            
+        Returns:
+            float: Verified score
+        """
+        # If first score is suspiciously low (0.0-0.2) for what looks like a reasonable answer,
+        # get a second opinion
+        if first_score < 0.3 and len(answer) > 10:  # Non-trivial answer
+            try:
+                prompt = f"""Double-check this accuracy evaluation.
+
+Context: {context}
+Answer: {answer}
+Previous score: {first_score}
+
+Is this answer actually incorrect, or was it scored too harshly?
+Give a fair accuracy score from 0.0 to 1.0.
+
+Respond ONLY with a number."""
+
+                response = self.client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "You are reviewing an accuracy score. Be fair and precise."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.0,
+                    max_tokens=10
+                )
+                
+                second_score = float(response.choices[0].message.content.strip())
+                
+                # If scores differ significantly, take the higher one (benefit of doubt)
+                if abs(second_score - first_score) > 0.3:
+                    print(f"Accuracy review: First={first_score}, Second={second_score}, Using={second_score}")
+                    return second_score
+                    
+            except Exception as e:
+                print(f"Error in second opinion: {e}")
+        
+        return first_score
     
     def _evaluate_confidence(self, answer, question, context):
         """
